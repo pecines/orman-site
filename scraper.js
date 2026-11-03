@@ -46,6 +46,19 @@ async function scrape() {
     await page.goto(SITE_URL, { waitUntil: 'networkidle', timeout: 60000 });
     await page.waitForSelector('table', { timeout: 15000 });
 
+    // TEŞHİS: sayfadaki tabloların yapısını loga dök
+    const debug = await page.evaluate(() => Array.from(document.querySelectorAll('table')).map((t, i) => {
+      let h = t.previousElementSibling, title = '';
+      for (let k = 0; h && k < 3 && !title; k++, h = h.previousElementSibling) title = (h.innerText || '').trim().slice(0, 60);
+      return {
+        tablo: i + 1,
+        ustBaslik: title,
+        basliklar: Array.from(t.querySelectorAll('th')).map(x => x.innerText.trim()),
+        ilkSatirlar: Array.from(t.querySelectorAll('tr')).slice(0, 4).map(r => Array.from(r.children).map(x => x.innerText.trim()))
+      };
+    }));
+    console.log('🔎 TABLO YAPISI:', JSON.stringify(debug, null, 1));
+
     return await page.evaluate(() => {
       const out = [];
       document.querySelectorAll('table tr').forEach(row => {
