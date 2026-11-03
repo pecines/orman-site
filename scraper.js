@@ -55,25 +55,31 @@ async function scrape() {
       // 1) Sunucu adları: ilk satır, ilk hücre ("SİTE / SERVER") hariç
       const servers = cellsOf(trs[0]).slice(1).map(c => c.innerText.trim()).filter(Boolean);
 
-      // 2) Veri satırları: <td> içerenler (başlık satırları <th>)
+      // 2) Veri satırları: fiyatlar <td> içinde, site adı satırın <th> (logo) hücresinde
       const sites = [];
       const html = [];
       trs.forEach(r => {
         const tds = Array.from(r.querySelectorAll('td'));
         if (tds.length < 3) return;
-        const first = tds[0];
-        const img = first.querySelector('img');
-        const a = first.querySelector('a');
-        let host = '';
-        try { host = a && a.href ? new URL(a.href).hostname.replace(/^www\./, '') : ''; } catch (e) {}
-        let file = '';
-        if (img && img.src) file = decodeURIComponent(img.src.split('/').pop().split('?')[0].replace(/\.[a-z0-9]+$/i, ''));
-        const name = first.innerText.trim()
-          || (img && (img.alt || img.title)) || (a && (a.title || a.getAttribute('aria-label')))
-          || first.getAttribute('title') || first.getAttribute('aria-label') || host || file || '';
-        if (html.length < 3) html.push(first.innerHTML.slice(0, 300));
-        const vals = tds.slice(1).map(c => c.innerText.trim());
-        sites.push({ name: name.trim(), url: a && a.href ? a.href : '', vals });
+        const first = r.querySelector('th') || (cellsOf(r)[0] !== tds[0] ? cellsOf(r)[0] : null);
+        let name = '', url = '';
+        if (first) {
+          const img = first.querySelector('img');
+          const a = first.querySelector('a');
+          const lab = first.querySelector('[alt],[title],[aria-label],[data-name],[data-site]');
+          let host = '';
+          try { host = a && a.href ? new URL(a.href).hostname.replace(/^www\./, '') : ''; } catch (e) {}
+          let file = '';
+          if (img && img.src) file = decodeURIComponent(img.src.split('/').pop().split('?')[0].replace(/\.[a-z0-9]+$/i, ''));
+          name = first.innerText.trim()
+            || (lab && (lab.getAttribute('alt') || lab.getAttribute('title') || lab.getAttribute('aria-label') || lab.getAttribute('data-name') || lab.getAttribute('data-site')))
+            || first.getAttribute('title') || first.getAttribute('aria-label')
+            || r.getAttribute('data-site') || r.getAttribute('data-name') || r.getAttribute('aria-label')
+            || host || file || '';
+          url = a && a.href ? a.href : '';
+        }
+        if (html.length < 3) html.push({ siteHucresi: first ? first.outerHTML.slice(0, 400) : null, fiyatHucreSayisi: tds.length });
+        sites.push({ name: String(name).trim(), url, vals: tds.map(c => c.innerText.trim()) });
       });
       return { servers, sites, html };
     });
@@ -101,20 +107,23 @@ async function getSiteId(name, url, cache) {
   try {
     const { servers, sites, html } = await scrape();
     console.log(`📦 ${servers.length} sunucu, ${sites.length} site satırı okundu.`);
-    console.log('🔎 Site hücresi örnekleri:', JSON.stringify(html));
+    console.log('🔎 Site hücresi örnekleri:', JSON.stringify(html, null, 1));
 
     const sv = await sb.from('servers').select('id,name');
     if (sv.error) throw sv.error;
     console.log('🗂  servers tablosu:', sv.data.map(s => s.name).join(', '));
 
     // Sayfadaki her sunucu başlığını servers tablosundaki id ile eşle
+    const numOf = t => { const m = String(t).split('\n')[0].trim().toUpperCase().match(/SERVER\s*(\d+)\s*$/); return m ? m[1] : null; };
+    const byNum = new Map(sv.data.map(s => [numOf(s.name), s.id]).filter(([n]) => n));
     const colId = servers.map(h => {
       for (const lv of LEVELS) {
         const m = new Map(sv.data.map(s => [lv(norm(s.name)), s.id]));
         const id = m.get(lv(norm(h)));
         if (id) return id;
       }
-      return null;
+      const n = numOf(h);                 // "SERVER1 12 KAS" -> "Yeni Server 1"
+      return n && byNum.get(n) || null;
     });
     const unmatched = servers.filter((_, i) => !colId[i]);
     if (unmatched.length) console.warn('⚠️ servers tablosunda karşılığı olmayan sunucular:', unmatched.join(', '));
@@ -122,7 +131,7 @@ async function getSiteId(name, url, cache) {
     const cache = new Map(), seen = new Set(), upserts = [];
     const now = new Date().toISOString();
     for (const s of sites) {
-      if (!s.name) { console.warn('⚠️ Site adı bulunamadı, satır atlandı.'); continue; }
+      if (!s.name || /^[\d.,\s-]+$/.test(s.name)) { console.warn('⚠️ Site adı bulunamadı, satır atlandı:', JSON.stringify(s.name)); continue; }
       if (seen.has(s.name)) continue;
       seen.add(s.name);
       const siteId = await getSiteId(s.name, s.url, cache);
