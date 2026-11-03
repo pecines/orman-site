@@ -2,17 +2,15 @@ const { chromium } = require('playwright');
 const { createClient } = require('@supabase/supabase-js');
 
 // 🔑 Supabase Bağlantı Bilgileriniz
-const SUPABASE_URL = 'https://wwbpdxtqyapfdutrjpyf.supabase.co'; 
+const SUPABASE_URL = 'https://supabase.co'; 
 
-// 💡 Şifreniz koda yazılmadı. GitHub Secrets üzerinden güvenle okunacak:
+// 💡 Şifreniz koda yazılmadı. GitHub Secrets (Kasa) üzerinden güvenle okunacak:
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_KEY; 
 
 if (!SUPABASE_SERVICE_ROLE_KEY) {
   console.error("❌ Kritik Hata: GitHub panelindeki SUPABASE_KEY sırrı (secret) bulunamadı!");
   process.exit(1);
 }
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function startScraper() {
   console.log('🔄 EnUcuzGB fiyat botu başlatıldı...');
@@ -77,8 +75,10 @@ async function startScraper() {
     console.log(`📦 Siteden ${pricesArray.length} adet benzersiz sunucu fiyatı çekildi.`);
 
     if (pricesArray.length > 0) {
-      // Supabase'e şemayı belirterek temiz listeyi gönderiyoruz
-      const { error } = await supabase
+      // 💡 Önbellek hatalarını ve çakışmaları tamamen aşan istemci çağrısı
+      const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      
+      const { error } = await supabaseClient
         .schema('public')
         .from('gb_prices')
         .upsert(pricesArray, { onConflict: 'server_name' });
