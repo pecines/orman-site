@@ -1,0 +1,28 @@
+name: 15 Dakikalık GB Fiyat Botu
+
+on:
+  schedule:
+    # Her 15 dakikada bir tetiklenmesini sağlar
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # İstediğiniz zaman GitHub panelinden manuel başlatabilmeniz için
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu Klonla
+        uses: actions/checkout@v4
+
+      - name: Node.js Kurulumu
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Bağımlılıkları Yükle
+        run: npm install
+
+      - name: Playwright Tarayıcı Altyapısını Kur
+        run: npx playwright install chromium --with-deps
+
+      - name: Botu Tetikle
+        run: node scraper.js
